@@ -89,7 +89,7 @@ def frequencies2bins(frequencies, bin_frequencies, unique_bins=False):
     # return the (unique) bin indices of the closest matches
     return indices
 
-def triangular_filter(bins, fft_size, overlap=True, normalize=True):
+def triangular_filter(channels, bins, fft_size, overlap=True, normalize=True):
     # TODO: add num channels argument 
     num_filters = len(bins) - 3
     filters = torch.zeros(size=[num_filters, fft_size])
@@ -112,48 +112,49 @@ def triangular_filter(bins, fft_size, overlap=True, normalize=True):
     if normalize:
         filters = torch.div(filters.T, filters.sum(dim=1)).T
 
+    filters = filters.repeat(channels, 1, 1)
+
     return filters    
 
-class TriangularFilterbank():
-    def __init__(self, 
+class LogSpacedTriangularFilterbank():
+    """
+
+    Example: 
+        audio, sample_rate = torchaudio.load("some/audio.wav")
+        log_spect = LogSpacedTriangularFilterbank(channels=2, sample_rate=sample_rate, freqs=log_frequencies(12, 40, sample_rate/2))
+        result = log_spect.process(audio)
+    """
+    def __init__(self, *,
                  sample_rate: int=48000, 
                  fft_size: int=4096,
                  hop_size: int=1024,
-                 freqs: Iterable[float]=[100, 1000, 5000]):
+                 freqs: Iterable[float],
+                 channels: int
+                 ):
         
         self.sample_rate = sample_rate
         self.fft_size = fft_size
         self.hop_size = hop_size
         self.freqs = freqs
+        self.channels = channels
 
         # use double fft_size so that dims match when negative 
         # frequencies are discarded
-        self._spec = torchaudio.transforms.Spectrogram(n_fft=self.fft_size*2,
+        self._spectrogram_processor = torchaudio.transforms.Spectrogram(n_fft=self.fft_size*2,
                                                       hop_length=self.hop_size)
-        self._fft_freqs = np.linspace(0, sample_rate/2, fft_size)
-        self._bins = frequencies2bins(self.freqs, fft_freqs)
-        self._filters = triangular_filter(self.bins, self.fft_size)
+        self._fft_freqs = np.linspace(0, self.sample_rate/2, self.fft_size)
+        self._bins = frequencies2bins(self.freqs, self._fft_freqs)
+        self._filters = triangular_filter(self.channels, self._bins, self.fft_size)
 
-    def process(self, signal: Iterable[float]):
-        spectrogram = self.spec(signal)
-        spectrogram = spectrogram[:fft_size, :] 
+    def process(self, signal: torch.Tensor):
+        assert len(signal.shape) == 2, "signal must have dimensions [num_channels, num_samples]"
+        spectrogram = self._spectrogram_processor(signal)
+        spectrogram = spectrogram[:, :self.fft_size, :] 
         return torch.matmul(self._filters, spectrogram)
 
-sample_rate = 8000
-fft_size = 1024
-fft_freqs = np.linspace(0, sample_rate/2, fft_size)
-
-filter_freqs = log_frequencies(3, 40, 8000)
-bins = frequencies2bins(filter_freqs, fft_freqs)
-
 audio, sample_rate = torchaudio.load("80bpm.wav")
-audio = audio[0, :]
-spec = torchaudio.transforms.Spectrogram(n_fft=fft_size*2)
-filters = triangular_filter(bins, fft_size=fft_size)
+log_spect = LogSpacedTriangularFilterbank(channels=2, sample_rate=sample_rate, freqs=log_frequencies(12, 40, sample_rate/2))
+result = log_spect.process(audio)
 
-spectrogram = spec(audio)
-spectrogram = spectrogram[:fft_size, :]
-result = torch.matmul(filters, spectrogram)
-
-plt.pcolormesh(result)
+plt.pcolormesh(result[0, :])
 plt.show()
