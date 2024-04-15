@@ -1,3 +1,4 @@
+from typing import Iterable
 import pprint
 
 import torch
@@ -88,15 +89,8 @@ def frequencies2bins(frequencies, bin_frequencies, unique_bins=False):
     # return the (unique) bin indices of the closest matches
     return indices
 
-sample_rate = 8000
-fft_size = 1024
-fft_freqs = np.linspace(0, sample_rate/2, fft_size)
-
-filter_freqs = log_frequencies(3, 40, 8000)
-bins = frequencies2bins(filter_freqs, fft_freqs)
-
 def triangular_filter(bins, fft_size, overlap=True, normalize=True):
-
+    # TODO: add num channels argument 
     num_filters = len(bins) - 3
     filters = torch.zeros(size=[num_filters, fft_size])
 
@@ -119,6 +113,38 @@ def triangular_filter(bins, fft_size, overlap=True, normalize=True):
         filters = torch.div(filters.T, filters.sum(dim=1)).T
 
     return filters    
+
+class TriangularFilterbank():
+    def __init__(self, 
+                 sample_rate: int=48000, 
+                 fft_size: int=4096,
+                 hop_size: int=1024,
+                 freqs: Iterable[float]=[100, 1000, 5000]):
+        
+        self.sample_rate = sample_rate
+        self.fft_size = fft_size
+        self.hop_size = hop_size
+        self.freqs = freqs
+
+        # use double fft_size so that dims match when negative 
+        # frequencies are discarded
+        self._spec = torchaudio.transforms.Spectrogram(n_fft=self.fft_size*2,
+                                                      hop_length=self.hop_size)
+        self._fft_freqs = np.linspace(0, sample_rate/2, fft_size)
+        self._bins = frequencies2bins(self.freqs, fft_freqs)
+        self._filters = triangular_filter(self.bins, self.fft_size)
+
+    def process(self, signal: Iterable[float]):
+        spectrogram = self.spec(signal)
+        spectrogram = spectrogram[:fft_size, :] 
+        return torch.matmul(self._filters, spectrogram)
+
+sample_rate = 8000
+fft_size = 1024
+fft_freqs = np.linspace(0, sample_rate/2, fft_size)
+
+filter_freqs = log_frequencies(3, 40, 8000)
+bins = frequencies2bins(filter_freqs, fft_freqs)
 
 audio, sample_rate = torchaudio.load("80bpm.wav")
 audio = audio[0, :]
