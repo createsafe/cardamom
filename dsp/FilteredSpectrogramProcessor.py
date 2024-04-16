@@ -1,12 +1,13 @@
 from typing import Iterable
 import pprint
 
+import librosa
 import torch
 import torchaudio
 import numpy as np
 import matplotlib.pyplot as plt
 
-torch.set_printoptions(profile="full")
+# torch.set_printoptions(profile="full")
 
 def log_frequencies(bands_per_octave: int, fmin: float, fmax: float, fref: float=440):
     """
@@ -116,6 +117,11 @@ def triangular_filter(channels, bins, fft_size, overlap=True, normalize=True):
 
     return filters    
 
+def log_magnitude(spectrogram: torch.Tensor, 
+                  mul: float,
+                  addend: float):
+    return torch.log10((spectrogram * mul) + addend)
+
 class LogSpacedTriangularFilterbank():
     """
 
@@ -129,8 +135,8 @@ class LogSpacedTriangularFilterbank():
                  fft_size: int=4096,
                  hop_size: int=1024,
                  freqs: Iterable[float],
-                 channels: int
-                 ):
+                 channels: int,
+                 unique_bins: bool):
         
         self.sample_rate = sample_rate
         self.fft_size = fft_size
@@ -140,10 +146,10 @@ class LogSpacedTriangularFilterbank():
 
         # use double fft_size so that dims match when negative 
         # frequencies are discarded
-        self._spectrogram_processor = torchaudio.transforms.Spectrogram(n_fft=self.fft_size*2,
-                                                      hop_length=self.hop_size)
+        self._spectrogram_processor = torchaudio.transforms.Spectrogram(n_fft=self.fft_size * 2,
+                                                                        hop_length=self.hop_size)
         self._fft_freqs = np.linspace(0, self.sample_rate/2, self.fft_size)
-        self._bins = frequencies2bins(self.freqs, self._fft_freqs)
+        self._bins = frequencies2bins(self.freqs, self._fft_freqs, unique_bins)
         self._filters = triangular_filter(self.channels, self._bins, self.fft_size)
 
     def process(self, signal: torch.Tensor):
@@ -151,19 +157,93 @@ class LogSpacedTriangularFilterbank():
         spectrogram = self._spectrogram_processor(signal)
         spectrogram = spectrogram[:, :self.fft_size, :] 
         return torch.matmul(self._filters, spectrogram)
+        # return spectrogram
+    
+# *************************************************************************
+# *************************************************************************
+# *************************************************************************
+from madmom.audio.signal import SignalProcessor, FramedSignalProcessor
+from madmom.audio.stft import ShortTimeFourierTransformProcessor
+from madmom.audio.spectrogram import (
+    FilteredSpectrogramProcessor, LogarithmicSpectrogramProcessor,
+    SpectrogramDifferenceProcessor)
+from madmom.processors import ParallelProcessor, SequentialProcessor
+from BeatNet.common import *
 
-audio, sample_rate = torchaudio.load("80bpm.wav")
-log_spect = LogSpacedTriangularFilterbank(channels=2, sample_rate=sample_rate, freqs=log_frequencies(12, 40, sample_rate/2))
-result = log_spect.process(audio)
 
-def log_magnitude(spectrogram: torch.Tensor, 
-                  mul: float,
-                  addend: float):
-    return torch.log10((spectrogram * mul) + addend)
+# feature extractor that extracts magnitude spectrogoram and its differences  
+
+class LOG_SPECT(FeatureModule):
+    def __init__(self, num_channels=1, sample_rate=22050, win_length=2048, hop_size=512, n_bands=[12], mode='online'):
+        sig = SignalProcessor(num_channels=num_channels, win_length=win_length, sample_rate=sample_rate)
+        self.sample_rate = sample_rate
+        self.hop_length = hop_size
+        self.num_channels = num_channels
+        multi = ParallelProcessor([])
+        frame_sizes = [win_length]  
+        num_bands = n_bands  
+        for frame_size, num_bands in zip(frame_sizes, num_bands):
+            if mode == 'online' or mode == 'offline':
+                frames = FramedSignalProcessor(frame_size=frame_size, hop_size=hop_size) 
+            else:   # for real-time and streaming modes 
+                frames = FramedSignalProcessor(frame_size=frame_size, hop_size=hop_size, num_frames=4) 
+            stft = ShortTimeFourierTransformProcessor()  # caching FFT window
+            filt = FilteredSpectrogramProcessor(
+                num_bands=num_bands, fmin=30, fmax=17000, norm_filters=True)
+            spec = LogarithmicSpectrogramProcessor(mul=1, add=1)
+            diff = SpectrogramDifferenceProcessor(
+                diff_ratio=0.5, positive_diffs=True, stack_diffs=np.hstack)
+            # process each frame size with spec and diff sequentially
+            # multi.append(SequentialProcessor((frames, stft, filt, spec, diff)))
+            multi.append(SequentialProcessor((frames, stft, filt)))
+        # stack the features and processes everything sequentially
+        self.pipe = SequentialProcessor((sig, multi, np.hstack))
+
+    def process_audio(self, audio):
+        feats = self.pipe(audio)
+        return feats.T
+# *************************************************************************
+# *************************************************************************
+# *************************************************************************
+
+if __name__ == '__main__':
+
+    filename = "80bpm.wav"
+    audio, sample_rate = torchaudio.load(filename)
+
+    sampler = torchaudio.transforms.Resample(orig_freq=sample_rate,
+                                             new_freq=22050)
+    audio = sampler(audio)
+
+    fft_size = 2048
+    hop_size = 512
+
+    log_spect = LogSpacedTriangularFilterbank(channels=audio.shape[0], 
+                                              sample_rate=22050,
+                                              fft_size=fft_size//2,
+                                              hop_size=hop_size,
+                                              freqs=log_frequencies(12, 30, 17000),
+                                              unique_bins=True)
+    result = log_spect.process(audio).abs()
+    result = log_magnitude(result, 1, 1)
+
+    spec = LOG_SPECT()
+    feats = spec.process_audio(audio.numpy().T)
+
+    # sig = SignalProcessor(num_channels=1, win_length=fft_size, sample_rate=sample_rate)
+    # frames = FramedSignalProcessor(frame_size=fft_size, hop_size=hop_size) 
+    # stft = ShortTimeFourierTransformProcessor()
+    # # pipe = SequentialProcessor((sig))
+
+    # processor = SequentialProcessor((sig, frames, stft))
+
+    # x = processor.process(audio.numpy().T)
 
 
 
-result = log_magnitude(result, 1, 1)
+    pass
 
-plt.pcolormesh(result[0, :])
-plt.show()
+    fig, axs = plt.subplots(2, 1, sharex=True, tight_layout=True)
+    axs[0].pcolormesh(feats)
+    axs[1].pcolormesh(result[0, :])
+    plt.show()
