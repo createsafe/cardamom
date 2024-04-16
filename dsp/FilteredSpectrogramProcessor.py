@@ -91,8 +91,8 @@ def frequencies2bins(frequencies, bin_frequencies, unique_bins=False):
     return indices
 
 def triangular_filter(channels, bins, fft_size, overlap=True, normalize=True):
-    # TODO: add num channels argument 
-    num_filters = len(bins) - 3
+    
+    num_filters = len(bins) - 2
     filters = torch.zeros(size=[num_filters, fft_size])
 
     for n in range(num_filters):
@@ -195,7 +195,7 @@ class LOG_SPECT(FeatureModule):
                 diff_ratio=0.5, positive_diffs=True, stack_diffs=np.hstack)
             # process each frame size with spec and diff sequentially
             # multi.append(SequentialProcessor((frames, stft, filt, spec, diff)))
-            multi.append(SequentialProcessor((frames, stft, filt)))
+            multi.append(SequentialProcessor((frames, stft, filt, spec)))
         # stack the features and processes everything sequentially
         self.pipe = SequentialProcessor((sig, multi, np.hstack))
 
@@ -215,6 +215,7 @@ if __name__ == '__main__':
                                              new_freq=22050)
     audio = sampler(audio)
 
+    bands_per_octave = 1
     fft_size = 2048
     hop_size = 512
 
@@ -222,12 +223,12 @@ if __name__ == '__main__':
                                               sample_rate=22050,
                                               fft_size=fft_size//2,
                                               hop_size=hop_size,
-                                              freqs=log_frequencies(12, 30, 17000),
+                                              freqs=log_frequencies(bands_per_octave, 30, 17000),
                                               unique_bins=True)
     result = log_spect.process(audio).abs()
     result = log_magnitude(result, 1, 1)
 
-    spec = LOG_SPECT()
+    spec = LOG_SPECT(n_bands=[bands_per_octave])
     feats = spec.process_audio(audio.numpy().T)
 
     # sig = SignalProcessor(num_channels=1, win_length=fft_size, sample_rate=sample_rate)
@@ -244,6 +245,9 @@ if __name__ == '__main__':
     pass
 
     fig, axs = plt.subplots(2, 1, sharex=True, tight_layout=True)
-    axs[0].pcolormesh(feats)
-    axs[1].pcolormesh(result[0, :])
+    frame = 10
+    axs[0].plot(feats[:, frame])
+    axs[1].plot(result[0, :, frame])
+    # axs[0].pcolormesh(feats)
+    # axs[1].pcolormesh(result[0, :])
     plt.show()
