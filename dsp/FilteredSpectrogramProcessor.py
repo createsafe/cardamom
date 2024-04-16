@@ -156,5 +156,14 @@ audio, sample_rate = torchaudio.load("80bpm.wav")
 log_spect = LogSpacedTriangularFilterbank(channels=2, sample_rate=sample_rate, freqs=log_frequencies(12, 40, sample_rate/2))
 result = log_spect.process(audio)
 
+def log_magnitude(spectrogram: torch.Tensor, 
+                  mul: float,
+                  addend: float):
+    return torch.log10((spectrogram * mul) + addend)
+
+
+
+result = log_magnitude(result, 1, 1)
+
 plt.pcolormesh(result[0, :])
 plt.show()
