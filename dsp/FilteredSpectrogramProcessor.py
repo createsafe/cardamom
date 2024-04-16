@@ -146,18 +146,24 @@ class LogSpacedTriangularFilterbank():
 
         # use double fft_size so that dims match when negative 
         # frequencies are discarded
-        self._spectrogram_processor = torchaudio.transforms.Spectrogram(n_fft=self.fft_size * 2,
-                                                                        hop_length=self.hop_size)
+        # self._spectrogram_processor = torchaudio.transforms.Spectrogram(n_fft=self.fft_size * 2,
+        #                                                                 hop_length=self.hop_size)
+        self._spectrogram_processor = lambda signal : torch.stft(signal, 
+                                                                 n_fft=self.fft_size * 2, 
+                                                                 hop_length=self.hop_size,
+                                                                 return_complex=True,
+                                                                 window=torch.hann_window(self.fft_size * 2))
         self._fft_freqs = np.linspace(0, self.sample_rate/2, self.fft_size)
         self._bins = frequencies2bins(self.freqs, self._fft_freqs, unique_bins)
         self._filters = triangular_filter(self.channels, self._bins, self.fft_size)
 
     def process(self, signal: torch.Tensor):
         assert len(signal.shape) == 2, "signal must have dimensions [num_channels, num_samples]"
-        spectrogram = self._spectrogram_processor(signal)
+        spectrogram = self._spectrogram_processor(signal).abs()
         spectrogram = spectrogram[:, :self.fft_size, :] 
-        return torch.matmul(self._filters, spectrogram)
-        # return spectrogram
+        filtered = torch.matmul(self._filters, spectrogram)
+        result = log_magnitude(filtered, 1, 1)
+        return result
     
 # *************************************************************************
 # *************************************************************************
@@ -194,10 +200,11 @@ class LOG_SPECT(FeatureModule):
             diff = SpectrogramDifferenceProcessor(
                 diff_ratio=0.5, positive_diffs=True, stack_diffs=np.hstack)
             # process each frame size with spec and diff sequentially
-            # multi.append(SequentialProcessor((frames, stft, filt, spec, diff)))
-            multi.append(SequentialProcessor((frames, stft, filt, spec)))
+            multi.append(SequentialProcessor((frames, stft, filt, spec, diff)))
+            # multi.append(SequentialProcessor((frames, stft, filt, spec)))
         # stack the features and processes everything sequentially
         self.pipe = SequentialProcessor((sig, multi, np.hstack))
+        # self.pipe = SequentialProcessor((sig, multi, np.dstack))
 
     def process_audio(self, audio):
         feats = self.pipe(audio)
@@ -211,11 +218,15 @@ if __name__ == '__main__':
     filename = "80bpm.wav"
     audio, sample_rate = torchaudio.load(filename)
 
+    # sample_rate = 22050
+    # audio = torch.cos(torch.linspace(0, 3, sample_rate*3) * 440 * 2 * np.pi)
+    # audio = audio.unsqueeze(dim=0)
+
     sampler = torchaudio.transforms.Resample(orig_freq=sample_rate,
                                              new_freq=22050)
     audio = sampler(audio)
 
-    bands_per_octave = 1
+    bands_per_octave = 12
     fft_size = 2048
     hop_size = 512
 
@@ -225,8 +236,11 @@ if __name__ == '__main__':
                                               hop_size=hop_size,
                                               freqs=log_frequencies(bands_per_octave, 30, 17000),
                                               unique_bins=True)
-    result = log_spect.process(audio).abs()
-    result = log_magnitude(result, 1, 1)
+    result = log_spect.process(audio)
+
+    diff = torch.diff(result, dim=2, prepend=torch.zeros((result.shape[0], result.shape[1], 1)))
+    diff *= (diff > 0).to(diff.dtype)
+    result = torch.cat((result, diff), dim=1)
 
     spec = LOG_SPECT(n_bands=[bands_per_octave])
     feats = spec.process_audio(audio.numpy().T)
@@ -246,8 +260,8 @@ if __name__ == '__main__':
 
     fig, axs = plt.subplots(2, 1, sharex=True, tight_layout=True)
     frame = 10
-    axs[0].plot(feats[:, frame])
-    axs[1].plot(result[0, :, frame])
-    # axs[0].pcolormesh(feats)
-    # axs[1].pcolormesh(result[0, :])
+    # axs[0].plot(np.abs(feats[:, frame]))
+    # axs[1].plot(result[0, :, frame])
+    axs[0].pcolormesh(np.abs(feats))
+    axs[1].pcolormesh(result[0, :])
     plt.show()
