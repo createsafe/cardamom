@@ -8,7 +8,7 @@ import scipy
 import matplotlib.pyplot as plt
 import librosa
 
-from classical.utils import delta, fir2spectrum
+from cardamom.classical.utils import delta, fir2spectrum
 
 """
 TODO: replace `numpy` arrays with `torch` tensors
