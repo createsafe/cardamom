@@ -7,6 +7,8 @@ import scipy
 import matplotlib.pyplot as plt
 import librosa
 
+from utils import delta, fir2spectrum
+
 """
 Parametric Equalizer 
 
@@ -156,15 +158,80 @@ class Filter():
 
         return y
 
+class ParametricEqualizer():
+    """
+    Parametric equalizer consister of the following LTI systems in 
+    series:
+        Low Shelf -> Peak -> Peak ... -> Peak -> High Shelf
+    """
 
+    def __init__(self, sample_rate: int, num_filters: int):
+        self.sample_rate = sample_rate
+        self.num_filters = num_filters
+        self._init_filters()
+        
+    def _init_filters(self):
+        self.center_frequencies = np.geomspace(start=0.1 * self.sample_rate//2, 
+                                               stop=0.9 * self.sample_rate//2,
+                                               num=self.num_filters)
+        self.filters = list()
+        for n, fc in enumerate(self.center_frequencies):
+            if n == 0:
+                b, a = lowshelf(self.sample_rate, fc, 10.0)
+            elif n == len(self.center_frequencies)-1:
+                b, a = highshelf(self.sample_rate, fc, 10.0)
+            else:
+                b, a = peak(self.sample_rate, fc, 10.0, np.sqrt(2)/2)
+            self.filters.append(Filter(b, a))
 
+    def process(self, x: np.ndarray) -> np.ndarray:
+        """
+        Apply parametric filters to input audio by cascading 
+        second order sections.
+
+        Arguments:
+        x (np.ndarray): [C, T] signal
+
+        Returns :
+        y (np.ndarray): [C, T] filtered signal
+        """
+        num_channels = x.shape[0]
+        num_samples = x.shape[1]
+
+        y = np.zeros_like(x)
+        for n, filt in enumerate(self.filters):
+            if n == 0:
+                y = filt.process(x)
+            else:
+                y = filt.process(y)
+        
+        return y
+
+num_samples = 1024
 fs = 8000
-fc = fs/4
-gain = -10 # gain in dB
+eq = ParametricEqualizer(sample_rate=fs, num_filters=3)
 
-b, a = peak(fs, fc, gain, 10)
-w, h = scipy.signal.freqz(b, a)
-plt.plot(w, librosa.amplitude_to_db(h))
+d = delta(shape=(1, num_samples))
+h = eq.process(d)
+
+fig, axs = plt.subplots(2, 1, sharex=True)
+H, f = fir2spectrum(h, sample_rate=fs)
+axs[0].plot(f, np.abs(H[0, :]))
+
+for filt in eq.filters:
+    h = filt.process(d)
+    H, f = fir2spectrum(h, sample_rate=fs)
+
+    axs[1].plot(f, np.abs(H[0, :]))
+plt.show()
+
+# fs = 8000
+# fc = fs/4
+# gain = -10 # gain in dB
+
+# b, a = peak(fs, fc, gain, 10)
+# w, h = scipy.signal.freqz(b, a)
+# plt.plot(w, librosa.amplitude_to_db(h))
 
 plt.show()
 
