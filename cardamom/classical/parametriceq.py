@@ -177,12 +177,14 @@ class ParametricEqualizer():
         self.filters = list()
         for n, fc in enumerate(self.center_frequencies):
             if n == 0:
-                b, a = lowshelf(self.sample_rate, fc, 10.0)
+                b, a = lowshelf(self.sample_rate, fc, 0.0)
             elif n == len(self.center_frequencies)-1:
-                b, a = highshelf(self.sample_rate, fc, 10.0)
+                b, a = highshelf(self.sample_rate, fc, 0.0)
             else:
-                b, a = peak(self.sample_rate, fc, 10.0, np.sqrt(2)/2)
+                b, a = peak(self.sample_rate, fc, 0.0, np.sqrt(2)/2)
             self.filters.append(Filter(b, a))
+
+    
 
     def process(self, x: np.ndarray) -> np.ndarray:
         """
