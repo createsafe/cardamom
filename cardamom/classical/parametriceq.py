@@ -8,7 +8,7 @@ import scipy
 import matplotlib.pyplot as plt
 import librosa
 
-from utils import delta, fir2spectrum
+from classical.utils import delta, fir2spectrum
 
 """
 TODO: replace `numpy` arrays with `torch` tensors
@@ -228,6 +228,9 @@ class ParametricEqualizer():
         return Filter(b, a)
 
     def update_parameters(self, index: int, center: float, gain: float, q: float=None):
+        """
+        Update parameters of constituant filter at position `index`
+        """
         self.filters[index] = self._get_coeffs_by_index(index, center, gain, q)
 
     def process(self, x: np.ndarray) -> np.ndarray:
