@@ -17,10 +17,14 @@ filters, which are controlled independently" [1, p. 63]
     West Sussex, UK: John Wiley & Sons, 2011.
 """
 
-def _parametric_constants(fs, fc, gain):
+def _parametric_constants(fs, fc, gain) -> Tuple[float, float]:
     """
     Constants for 2nd order peak and shelf filters.
     See Table 2.3 in [1], p. 23.
+
+    Returns:
+    V0 (float)
+    K (float)
     """
     V0 = 10.0**(gain/20)
     K = np.tan(np.pi * fc / fs)
@@ -93,7 +97,7 @@ def highshelf(fs: int, fc: float, gain: float) -> Tuple[Iterable, Iterable]:
 
     return [b0, b1, b2], [1, a1, a2]
 
-def peak(fs: int, fc: float, gain: float) -> Tuple[Iterable, Iterable]:
+def peak(fs: int, fc: float, gain: float, q: float) -> Tuple[Iterable, Iterable]:
     """
     Coefficients for a peak filter.
 
@@ -101,6 +105,7 @@ def peak(fs: int, fc: float, gain: float) -> Tuple[Iterable, Iterable]:
     fs (int): sampling rate (Hz)
     fc (float): cutoff frequency (Hz)
     gain (float): gain (dB)
+    q (float): resonance/bandwidth
 
     Returns: 
     b (list): feedforward coefficients
@@ -114,15 +119,22 @@ def peak(fs: int, fc: float, gain: float) -> Tuple[Iterable, Iterable]:
     >>> plt.plot(w, librosa.amplitude_to_db(h))
     """
 
+    K, V0 = _parametric_constants(fs, fc, gain)
+
+    denom = (1 + (1/q)*K + K**2)
+    b0 = (1 + (V0/q)*K + K**2) / denom
+    b1 = 2*(K**2 - 1) / denom
+    b2 = (1 - (V0/q)*K + K**2) / denom
+    a1 = 2*(K**2 - 1) / denom
+    a2 = (1 - (1/q)*K + K**2) / denom
+
+    return [b0, b1, b2], [1, a1, a2]
+
 fs = 8000
 fc = fs/4
 gain = -10 # gain in dB
 
-b, a = highshelf(fs, fc, gain)
-w, h = scipy.signal.freqz(b, a)
-plt.plot(w, librosa.amplitude_to_db(h))
-
-b, a = lowshelf(fs, fc, gain)
+b, a = peak(fs, fc, gain, 10)
 w, h = scipy.signal.freqz(b, a)
 plt.plot(w, librosa.amplitude_to_db(h))
 
