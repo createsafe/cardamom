@@ -130,6 +130,34 @@ def peak(fs: int, fc: float, gain: float, q: float) -> Tuple[Iterable, Iterable]
 
     return [b0, b1, b2], [1, a1, a2]
 
+class Filter():
+    """
+    Wrapper for `scipy.signal.lfilter` with multichannel
+    processing.
+    """
+    def __init__(self, b, a):
+        self.b = b
+        self.a = a
+
+    def process(self, x: np.ndarray) -> np.ndarray:
+        """
+        Arguments:
+        x (np.ndarray): [C, T] signal
+
+        Returns :
+        y (np.ndarray): [C, T] filtered signal
+        """
+        num_channels = x.shape[0]
+        num_samples = x.shape[1]
+
+        y = np.zeros_like(x)
+        for channel in range(num_channels):
+            y[channel, :] = scipy.signal.lfilter(self.b, self.a, x[channel, :])
+
+        return y
+
+
+
 fs = 8000
 fc = fs/4
 gain = -10 # gain in dB
