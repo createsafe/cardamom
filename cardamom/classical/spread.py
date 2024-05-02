@@ -28,9 +28,11 @@ class MidSide():
         signal = _fix_dims(signal)
         
         if is_stereo(signal):
-            m = np.sum(signal, axis=0)
-            d = np.diff(signal, axis=0)
-            return 0.5 * ((np.sqrt(-self.spread + 1)) * m + np.sqrt((self.spread+1)) * d)
+            m = (np.sqrt(-self.spread + 1)) * np.sum(signal, axis=0)
+            d = np.sqrt((self.spread+1)) * np.diff(signal, axis=0)
+            l = m + d
+            r = m - d
+            return 0.5 * np.hstack((l, r))
         else:
             warnings.warn("MidSide not meaningful for mono signal")
             return signal
