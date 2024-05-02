@@ -8,7 +8,7 @@ import scipy
 import matplotlib.pyplot as plt
 import librosa
 
-from cardamom.classical.utils import delta, fir2spectrum
+from cardamom.classical.utils import delta, fir2spectrum, _fix_dims
 
 """
 TODO: replace `numpy` arrays with `torch` tensors
@@ -233,7 +233,7 @@ class ParametricEqualizer():
         """
         self.filters[index] = self._get_coeffs_by_index(index, center, gain, q)
 
-    def process(self, x: np.ndarray) -> np.ndarray:
+    def process(self, signal: np.ndarray) -> np.ndarray:
         """
         Apply parametric filters to input audio by cascading 
         second order sections.
@@ -244,13 +244,15 @@ class ParametricEqualizer():
         Returns :
         y (np.ndarray): [C, T] filtered signal
         """
-        num_channels = x.shape[0]
-        num_samples = x.shape[1]
 
-        y = np.zeros_like(x)
+        signal = _fix_dims(signal)
+        num_channels = signal.shape[0]
+        num_samples = signal.shape[1]
+
+        y = np.zeros_like(signal)
         for n, filt in enumerate(self.filters):
             if n == 0:
-                y = filt.process(x)
+                y = filt.process(signal)
             else:
                 y = filt.process(y)
         
