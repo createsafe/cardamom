@@ -40,3 +40,22 @@ def fir2spectrum(fir: np.ndarray, sample_rate: int=1) -> Tuple[np.ndarray, np.nd
     H = H[:, :H.shape[1]//2]
     f = np.linspace(0, sample_rate//2, H.shape[1], False)
     return H, f
+
+def _fix_dims(signal: np.ndarray) -> np.ndarray:
+    """
+    Make sure a signal array is [C, T].
+    """
+    if signal.ndim() < 2:
+        signal = np.expand_dims(signal, axis=0)
+    elif signal.ndim() > 3:
+        RuntimeError("`signal` must be 1 or 2 dimensional.")
+    return signal
+
+def is_stereo(signal: np.ndarray) -> bool:
+    """
+    Check to see if signal has two channels
+    """
+    signal = _fix_dims(signal)
+    num_channels = signal.shape[0]
+    
+    return num_channels == 2
