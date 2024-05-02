@@ -45,9 +45,9 @@ def _fix_dims(signal: np.ndarray) -> np.ndarray:
     """
     Make sure a signal array is [C, T].
     """
-    if signal.ndim() < 2:
+    if signal.ndim < 2:
         signal = np.expand_dims(signal, axis=0)
-    elif signal.ndim() > 3:
+    elif signal.ndim > 3:
         RuntimeError("`signal` must be 1 or 2 dimensional.")
     return signal
 
