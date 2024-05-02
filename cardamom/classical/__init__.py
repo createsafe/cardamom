@@ -1,1 +1,1 @@
-from parametriceq import ParametricEqualizer
+from .parametriceq import ParametricEqualizer
