@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Union
 
 def samples2seconds(samples: float, sample_rate: int) -> float:
     return samples / sample_rate
@@ -18,11 +19,17 @@ class DurationUnits(Enum):
     SAMPLES = 'samples'
     FRAMES = 'frames'
 
+    def str2units(s):
+        for e in DurationUnits:
+            if e.value == s:
+                return e
+        return None
+
 class Duration():
     """
     Class to store duration and easily convert from time to samples to frames.
     """
-    def __init__(self, value: float, units: DurationUnits, *, sample_rate: int=None):
+    def __init__(self, value: float, units: Union[DurationUnits, str], *, sample_rate: int=None):
         self.value = value
         self.units = units
         self.sample_rate = sample_rate
