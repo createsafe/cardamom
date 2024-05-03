@@ -19,10 +19,11 @@ class DurationUnits(Enum):
     SAMPLES = 'samples'
     FRAMES = 'frames'
 
-    def str2units(s):
+    def str2units(self, s):
         for e in DurationUnits:
             if e.value == s:
                 return e
+        Warning(f"{s} did not coincide with a unit in `DurationUnits`: {*DurationUnits,}")
         return None
 
 class Duration():
@@ -30,6 +31,10 @@ class Duration():
     Class to store duration and easily convert from time to samples to frames.
     """
     def __init__(self, value: float, units: Union[DurationUnits, str], *, sample_rate: int=None):
+
+        if isinstance(units, str):
+            units = DurationUnits.str2units(units)
+
         self.value = value
         self.units = units
         self.sample_rate = sample_rate
