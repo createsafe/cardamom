@@ -2,8 +2,8 @@ import os
 import warnings
 from pydantic import Field
 from typing import Tuple, Iterable
-import scipy.signal
 import torch
+import torchaudio
 import numpy as np
 import scipy 
 import matplotlib.pyplot as plt
@@ -60,26 +60,19 @@ class PeakFollower():
         num_channels = signal.shape[0]
         num_samples = signal.shape[1]
 
-        self.last_envelope = np.zeros(shape=(num_channels, 1))
+        self.last_envelope = np.zeros(shape=(num_channels))
 
         # rectify signal
         x = signal * signal
 
         envelope = np.zeros(shape=(num_channels, num_samples))
-        for channel in range(num_channels):
-            for n in range(num_samples):
-                current_envelope = np.zeros(shape=(1, 1))
-                y = (self.last_envelope[channel] - x[channel, n])
-                if x[channel, n] > self.last_envelope[channel]:
-                    current_envelope = self.attack * y
-                else:
-                    current_envelope = self.release * y
-                current_envelope += x[channel, n]
+        # for channel in range(num_channels):
+        for n in range(num_samples):
+            current_envelope = np.zeros(shape=(num_channels))
 
-                if current_envelope < 0.0:
-                    current_envelope = 0.0
+            current_envelope = self.last_envelope + self.attack*np.max(x[:, n] - self.last_envelope, initial=0.0) - self.release*self.last_envelope
 
-                self.last_envelope[channel] = current_envelope[0]
-                envelope[channel, n] = current_envelope[0]
+            self.last_envelope = current_envelope
+            envelope[:, n] = current_envelope
         return envelope
         

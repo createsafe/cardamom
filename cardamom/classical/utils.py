@@ -1,3 +1,4 @@
+from enum import Enum
 from typing import Tuple, Annotated
 from pydantic import PositiveInt
 import torch 
@@ -59,3 +60,6 @@ def is_stereo(signal: np.ndarray) -> bool:
     num_channels = signal.shape[0]
     
     return num_channels == 2
+
+
+        
